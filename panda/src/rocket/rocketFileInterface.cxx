@@ -20,7 +20,7 @@
  */
 RocketFileInterface::
 RocketFileInterface(VirtualFileSystem *vfs) : _vfs(vfs) {
-  if (_vfs == NULL) {
+  if (_vfs == nullptr) {
     _vfs = VirtualFileSystem::get_global_ptr();
   }
 }
@@ -30,30 +30,32 @@ RocketFileInterface(VirtualFileSystem *vfs) : _vfs(vfs) {
  */
 Rocket::Core::FileHandle RocketFileInterface::
 Open(const Rocket::Core::String& path) {
-  rocket_cat.debug() << "Opening " << path.CString() << "\n";
+  if (rocket_cat.is_debug()) {
+    rocket_cat.debug() << "Opening " << path.CString() << "\n";
+  }
 
   Filename fn = Filename::from_os_specific(path.CString());
 
   PT(VirtualFile) file = _vfs->get_file(fn);
-  if (file == NULL) {
+  if (file == nullptr) {
     // failed?  Try model-path as a Panda-friendly fallback.
     if (!_vfs->resolve_filename(fn, get_model_path())) {
       rocket_cat.error() << "Could not resolve " << fn
           << " along the model-path (currently: " << get_model_path() << ")\n";
-      return (Rocket::Core::FileHandle) NULL;
+      return (Rocket::Core::FileHandle) nullptr;
     }
 
     file = _vfs->get_file(fn);
-    if (file == NULL) {
+    if (file == nullptr) {
       rocket_cat.error() << "Failed to get " << fn << ", found on model-path\n";
-      return (Rocket::Core::FileHandle) NULL;
+      return (Rocket::Core::FileHandle) nullptr;
     }
   }
 
-  istream *str = file->open_read_file(true);
-  if (str == NULL) {
+  std::istream *str = file->open_read_file(true);
+  if (str == nullptr) {
     rocket_cat.error() << "Failed to open " << fn << " for reading\n";
-    return (Rocket::Core::FileHandle) NULL;
+    return (Rocket::Core::FileHandle) nullptr;
   }
 
   VirtualFileHandle *handle = new VirtualFileHandle;
@@ -70,7 +72,7 @@ Open(const Rocket::Core::String& path) {
 void RocketFileInterface::
 Close(Rocket::Core::FileHandle file) {
   VirtualFileHandle *handle = (VirtualFileHandle*) file;
-  if (handle == NULL) {
+  if (handle == nullptr) {
     return;
   }
 
@@ -84,7 +86,7 @@ Close(Rocket::Core::FileHandle file) {
 size_t RocketFileInterface::
 Read(void* buffer, size_t size, Rocket::Core::FileHandle file) {
   VirtualFileHandle *handle = (VirtualFileHandle*) file;
-  if (handle == NULL) {
+  if (handle == nullptr) {
     return 0;
   }
 
@@ -98,19 +100,19 @@ Read(void* buffer, size_t size, Rocket::Core::FileHandle file) {
 bool RocketFileInterface::
 Seek(Rocket::Core::FileHandle file, long offset, int origin) {
   VirtualFileHandle *handle = (VirtualFileHandle*) file;
-  if (handle == NULL) {
+  if (handle == nullptr) {
     return false;
   }
 
   switch(origin) {
   case SEEK_SET:
-    handle->_stream->seekg(offset, ios::beg);
+    handle->_stream->seekg(offset, std::ios::beg);
     break;
   case SEEK_CUR:
-    handle->_stream->seekg(offset, ios::cur);
+    handle->_stream->seekg(offset, std::ios::cur);
     break;
   case SEEK_END:
-    handle->_stream->seekg(offset, ios::end);
+    handle->_stream->seekg(offset, std::ios::end);
   };
 
   return !handle->_stream->fail();
@@ -122,7 +124,7 @@ Seek(Rocket::Core::FileHandle file, long offset, int origin) {
 size_t RocketFileInterface::
 Tell(Rocket::Core::FileHandle file) {
   VirtualFileHandle *handle = (VirtualFileHandle*) file;
-  if (handle == NULL) {
+  if (handle == nullptr) {
     return 0;
   }
 
@@ -135,7 +137,7 @@ Tell(Rocket::Core::FileHandle file) {
 size_t RocketFileInterface::
 Length(Rocket::Core::FileHandle file) {
   VirtualFileHandle *handle = (VirtualFileHandle*) file;
-  if (handle == NULL) {
+  if (handle == nullptr) {
     return 0;
   }
 

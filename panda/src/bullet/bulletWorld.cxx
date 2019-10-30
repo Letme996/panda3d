@@ -12,14 +12,24 @@
  */
 
 #include "bulletWorld.h"
+
+#include "config_bullet.h"
+
+#include "bulletFilterCallbackData.h"
 #include "bulletPersistentManifold.h"
 #include "bulletShape.h"
 #include "bulletSoftBodyWorldInfo.h"
+#include "bulletTickCallbackData.h"
 
 #include "collideMask.h"
 #include "lightMutexHolder.h"
 
-#define clamp(x, x_min, x_max) max(min(x, x_max), x_min)
+#define clamp(x, x_min, x_max) std::max(std::min(x, x_max), x_min)
+
+using std::endl;
+using std::istream;
+using std::ostream;
+using std::string;
 
 TypeHandle BulletWorld::_type_handle;
 
@@ -37,7 +47,7 @@ BulletWorld::
 BulletWorld() {
 
   // Init groups filter matrix
-  for (int i=0; i<32; i++) {
+  for (size_t i = 0; i < 32; ++i) {
     _filter_cb2._collide[i].clear();
     _filter_cb2._collide[i].set_bit(i);
   }
@@ -82,7 +92,8 @@ BulletWorld() {
   _world->getPairCache()->setInternalGhostPairCallback(&_ghost_cb);
 
   // Filter callback
-  switch (bullet_filter_algorithm) {
+  _filter_algorithm = bullet_filter_algorithm;
+  switch (_filter_algorithm) {
     case FA_mask:
       _filter_cb = &_filter_cb1;
       break;
@@ -94,13 +105,13 @@ BulletWorld() {
       break;
     default:
       bullet_cat.error() << "no proper filter algorithm!" << endl;
-      _filter_cb = NULL;
+      _filter_cb = nullptr;
   }
 
   _world->getPairCache()->setOverlapFilterCallback(_filter_cb);
 
   // Tick callback
-  _tick_callback_obj = NULL;
+  _tick_callback_obj = nullptr;
 
   // SoftBodyWorldInfo
   _info.m_dispatcher = _dispatcher;
@@ -211,6 +222,8 @@ int BulletWorld::
 do_physics(PN_stdfloat dt, int max_substeps, PN_stdfloat stepsize) {
   LightMutexHolder holder(get_global_lock());
 
+  bullet_contact_added_callback = _contact_added_callback_obj;
+
   _pstat_physics.start();
 
   int num_substeps = clamp(int(dt / stepsize), 1, max_substeps);
@@ -238,6 +251,8 @@ do_physics(PN_stdfloat dt, int max_substeps, PN_stdfloat stepsize) {
 
   _pstat_physics.stop();
 
+  bullet_contact_added_callback.clear();
+
   return n;
 }
 
@@ -247,20 +262,20 @@ do_physics(PN_stdfloat dt, int max_substeps, PN_stdfloat stepsize) {
 void BulletWorld::
 do_sync_p2b(PN_stdfloat dt, int num_substeps) {
 
-  for (int i=0; i < _bodies.size(); i++) {
-    _bodies[i]->do_sync_p2b();
+  for (BulletRigidBodyNode *body : _bodies) {
+    body->do_sync_p2b();
   }
 
-  for (int i=0; i < _softbodies.size(); i++) {
-    _softbodies[i]->do_sync_p2b();
+  for (BulletSoftBodyNode *softbody : _softbodies) {
+    softbody->do_sync_p2b();
   }
 
-  for (int i=0; i < _ghosts.size(); i++) {
-    _ghosts[i]->do_sync_p2b();
+  for (BulletGhostNode *ghost : _ghosts) {
+    ghost->do_sync_p2b();
   }
 
-  for (int i=0; i < _characters.size(); i++) {
-    _characters[i]->do_sync_p2b(dt, num_substeps);
+  for (BulletBaseCharacterControllerNode *character : _characters) {
+    character->do_sync_p2b(dt, num_substeps);
   }
 }
 
@@ -270,24 +285,24 @@ do_sync_p2b(PN_stdfloat dt, int num_substeps) {
 void BulletWorld::
 do_sync_b2p() {
 
-  for (int i=0; i < _vehicles.size(); i++) {
-    _vehicles[i]->do_sync_b2p();
+  for (BulletRigidBodyNode *body : _bodies) {
+    body->do_sync_b2p();
   }
 
-  for (int i=0; i < _bodies.size(); i++) {
-    _bodies[i]->do_sync_b2p();
+  for (BulletSoftBodyNode *softbody : _softbodies) {
+    softbody->do_sync_b2p();
   }
 
-  for (int i=0; i < _softbodies.size(); i++) {
-    _softbodies[i]->do_sync_b2p();
+  for (BulletGhostNode *ghost : _ghosts) {
+    ghost->do_sync_b2p();
   }
 
-  for (int i=0; i < _ghosts.size(); i++) {
-    _ghosts[i]->do_sync_b2p();
+  for (BulletBaseCharacterControllerNode *character : _characters) {
+    character->do_sync_b2p();
   }
 
-  for (int i=0; i < _characters.size(); i++) {
-    _characters[i]->do_sync_b2p();
+  for (BulletVehicle *vehicle : _vehicles) {
+    vehicle->do_sync_b2p();
   }
 }
 
@@ -352,7 +367,7 @@ remove(TypedObject *object) {
 }
 
 /**
- * Deprecated!  Please use BulletWorld::attach
+ * @deprecated Please use BulletWorld::attach
  */
 void BulletWorld::
 attach_rigid_body(BulletRigidBodyNode *node) {
@@ -362,7 +377,7 @@ attach_rigid_body(BulletRigidBodyNode *node) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_rigid_body(BulletRigidBodyNode *node) {
@@ -372,7 +387,7 @@ remove_rigid_body(BulletRigidBodyNode *node) {
 }
 
 /**
- * Deprecated!  Please use BulletWorld::attach
+ * @deprecated Please use BulletWorld::attach
  */
 void BulletWorld::
 attach_soft_body(BulletSoftBodyNode *node) {
@@ -382,7 +397,7 @@ attach_soft_body(BulletSoftBodyNode *node) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_soft_body(BulletSoftBodyNode *node) {
@@ -392,7 +407,7 @@ remove_soft_body(BulletSoftBodyNode *node) {
 }
 
 /**
- * Deprecated!  Please use BulletWorld::attach
+ * @deprecated Please use BulletWorld::attach
  */
 void BulletWorld::
 attach_ghost(BulletGhostNode *node) {
@@ -402,7 +417,7 @@ attach_ghost(BulletGhostNode *node) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_ghost(BulletGhostNode *node) {
@@ -412,7 +427,7 @@ remove_ghost(BulletGhostNode *node) {
 }
 
 /**
- * Deprecated!  Please use BulletWorld::attach
+ * @deprecated Please use BulletWorld::attach
  */
 void BulletWorld::
 attach_character(BulletBaseCharacterControllerNode *node) {
@@ -422,7 +437,7 @@ attach_character(BulletBaseCharacterControllerNode *node) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_character(BulletBaseCharacterControllerNode *node) {
@@ -432,7 +447,7 @@ remove_character(BulletBaseCharacterControllerNode *node) {
 }
 
 /**
- * Deprecated!  Please use BulletWorld::attach
+ * @deprecated Please use BulletWorld::attach
  */
 void BulletWorld::
 attach_vehicle(BulletVehicle *vehicle) {
@@ -442,7 +457,7 @@ attach_vehicle(BulletVehicle *vehicle) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_vehicle(BulletVehicle *vehicle) {
@@ -463,7 +478,7 @@ attach_constraint(BulletConstraint *constraint, bool linked_collision) {
 }
 
 /**
- * Deprecated.! Please use BulletWorld::remove
+ * @deprecated Please use BulletWorld::remove
  */
 void BulletWorld::
 remove_constraint(BulletConstraint *constraint) {
@@ -785,7 +800,7 @@ BulletRigidBodyNode *BulletWorld::
 get_rigid_body(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_bodies.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_bodies.size(), nullptr);
   return _bodies[idx];
 }
 
@@ -806,7 +821,7 @@ BulletSoftBodyNode *BulletWorld::
 get_soft_body(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_softbodies.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_softbodies.size(), nullptr);
   return _softbodies[idx];
 }
 
@@ -827,7 +842,7 @@ BulletGhostNode *BulletWorld::
 get_ghost(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_ghosts.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_ghosts.size(), nullptr);
   return _ghosts[idx];
 }
 
@@ -848,7 +863,7 @@ BulletBaseCharacterControllerNode *BulletWorld::
 get_character(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_characters.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_characters.size(), nullptr);
   return _characters[idx];
 }
 
@@ -869,7 +884,7 @@ BulletVehicle *BulletWorld::
 get_vehicle(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_vehicles.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_vehicles.size(), nullptr);
   return _vehicles[idx];
 }
 
@@ -890,7 +905,7 @@ BulletConstraint *BulletWorld::
 get_constraint(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_constraints.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_constraints.size(), nullptr);
   return _constraints[idx];
 }
 
@@ -941,7 +956,9 @@ ray_test_all(const LPoint3 &from_pos, const LPoint3 &to_pos, const CollideMask &
 }
 
 /**
- *
+ * Performs a sweep test against all other shapes that match the given group
+ * mask.  The provided shape must be a convex shape; it is an error to invoke
+ * this method using a non-convex shape.
  */
 BulletClosestHitSweepResult BulletWorld::
 sweep_test_closest(BulletShape *shape, const TransformState &from_ts, const TransformState &to_ts, const CollideMask &mask, PN_stdfloat penetration) const {
@@ -1051,10 +1068,10 @@ BulletPersistentManifold *BulletWorld::
 get_manifold(int idx) const {
   LightMutexHolder holder(get_global_lock());
 
-  nassertr(idx < get_num_manifolds(), NULL);
+  nassertr(idx < _dispatcher->getNumManifolds(), nullptr);
 
   btPersistentManifold *ptr = _dispatcher->getManifoldByIndexInternal(idx);
-  return (ptr) ? new BulletPersistentManifold(ptr) : NULL;
+  return (ptr) ? new BulletPersistentManifold(ptr) : nullptr;
 }
 
 /**
@@ -1076,7 +1093,7 @@ get_collision_object(PandaNode *node) {
     return ((BulletSoftBodyNode *)node)->get_object();
   }
 
-  return NULL;
+  return nullptr;
 }
 
 /**
@@ -1086,7 +1103,7 @@ void BulletWorld::
 set_group_collision_flag(unsigned int group1, unsigned int group2, bool enable) {
   LightMutexHolder holder(get_global_lock());
 
-  if (bullet_filter_algorithm != FA_groups_mask) {
+  if (_filter_algorithm != FA_groups_mask) {
     bullet_cat.warning() << "filter algorithm is not 'groups-mask'" << endl;
   }
 
@@ -1108,6 +1125,24 @@ get_group_collision_flag(unsigned int group1, unsigned int group2) const {
  *
  */
 void BulletWorld::
+set_force_update_all_aabbs(bool force) {
+  LightMutexHolder holder(get_global_lock());
+  _world->setForceUpdateAllAabbs(force);
+}
+
+/**
+ *
+ */
+bool BulletWorld::
+get_force_update_all_aabbs() const {
+  LightMutexHolder holder(get_global_lock());
+  return _world->getForceUpdateAllAabbs();
+}
+
+/**
+ *
+ */
+void BulletWorld::
 set_contact_added_callback(CallbackObject *obj) {
   LightMutexHolder holder(get_global_lock());
 
@@ -1115,7 +1150,7 @@ set_contact_added_callback(CallbackObject *obj) {
   _world->getSolverInfo().m_solverMode |= SOLVER_USE_2_FRICTION_DIRECTIONS;
   _world->getSolverInfo().m_solverMode |= SOLVER_ENABLE_FRICTION_DIRECTION_CACHING;
 
-  bullet_contact_added_callback = obj;
+  _contact_added_callback_obj = obj;
 }
 
 /**
@@ -1129,7 +1164,7 @@ clear_contact_added_callback() {
   _world->getSolverInfo().m_solverMode &= ~SOLVER_USE_2_FRICTION_DIRECTIONS;
   _world->getSolverInfo().m_solverMode &= ~SOLVER_ENABLE_FRICTION_DIRECTION_CACHING;
 
-  bullet_contact_added_callback = NULL;
+  _contact_added_callback_obj = nullptr;
 }
 
 /**
@@ -1139,7 +1174,7 @@ void BulletWorld::
 set_tick_callback(CallbackObject *obj, bool is_pretick) {
   LightMutexHolder holder(get_global_lock());
 
-  nassertv(obj != NULL);
+  nassertv(obj != nullptr);
   _tick_callback_obj = obj;
   _world->setInternalTickCallback(&BulletWorld::tick_callback, this, is_pretick);
 }
@@ -1151,8 +1186,8 @@ void BulletWorld::
 clear_tick_callback() {
   LightMutexHolder holder(get_global_lock());
 
-  _tick_callback_obj = NULL;
-  _world->setInternalTickCallback(NULL);
+  _tick_callback_obj = nullptr;
+  _world->setInternalTickCallback(nullptr);
 }
 
 /**
@@ -1167,7 +1202,12 @@ tick_callback(btDynamicsWorld *world, btScalar timestep) {
   CallbackObject *obj = w->_tick_callback_obj;
   if (obj) {
     BulletTickCallbackData cbdata(timestep);
+    // Release the global lock that we are holding during the tick callback
+    // and allow interactions with bullet world in the user callback
+    get_global_lock().release();
     obj->do_callback(&cbdata);
+    // Acquire the global lock again and protect the execution
+    get_global_lock().acquire();
   }
 }
 
@@ -1178,9 +1218,9 @@ void BulletWorld::
 set_filter_callback(CallbackObject *obj) {
   LightMutexHolder holder(get_global_lock());
 
-  nassertv(obj != NULL);
+  nassertv(obj != nullptr);
 
-  if (bullet_filter_algorithm != FA_callback) {
+  if (_filter_algorithm != FA_callback) {
     bullet_cat.warning() << "filter algorithm is not 'callback'" << endl;
   }
 
@@ -1194,7 +1234,7 @@ void BulletWorld::
 clear_filter_callback() {
   LightMutexHolder holder(get_global_lock());
 
-  _filter_cb3._filter_callback_obj = NULL;
+  _filter_cb3._filter_callback_obj = nullptr;
 }
 
 /**
@@ -1244,7 +1284,7 @@ needBroadphaseCollision(btBroadphaseProxy* proxy0, btBroadphaseProxy* proxy1) co
 
 // cout << mask0 << "   " << mask1 << endl;
 
-  for (int i=0; i<32; i++) {
+  for (size_t i = 0; i < 32; ++i) {
     if (mask0.get_bit(i)) {
       if ((_collide[i] & mask1) != 0)
 // cout << "collide: i=" << i << " _collide[i]" << _collide[i] << endl;

@@ -12,14 +12,23 @@
  */
 
 #include "bulletBodyNode.h"
+
+#include "config_bullet.h"
+
 #include "bulletShape.h"
-#include "bulletWorld.h"
+#include "bulletBoxShape.h"
+#include "bulletCapsuleShape.h"
+#include "bulletPlaneShape.h"
+#include "bulletSphereShape.h"
+#include "bulletTriangleMeshShape.h"
 #include "bulletTriangleMesh.h"
+#include "bulletWorld.h"
 
 #include "collisionBox.h"
 #include "collisionPlane.h"
 #include "collisionSphere.h"
 #include "collisionPolygon.h"
+#include "collisionCapsule.h"
 
 TypeHandle BulletBodyNode::_type_handle;
 
@@ -150,7 +159,7 @@ safe_to_flatten_below() const {
  *
  */
 void BulletBodyNode::
-do_output(ostream &out) const {
+do_output(std::ostream &out) const {
 
   PandaNode::output(out);
 
@@ -166,7 +175,7 @@ do_output(ostream &out) const {
  *
  */
 void BulletBodyNode::
-output(ostream &out) const {
+output(std::ostream &out) const {
   LightMutexHolder holder(BulletWorld::get_global_lock());
 
   do_output(out);
@@ -310,7 +319,7 @@ BulletShape *BulletBodyNode::
 get_shape(int idx) const {
   LightMutexHolder holder(BulletWorld::get_global_lock());
 
-  nassertr(idx >= 0 && idx < (int)_shapes.size(), NULL);
+  nassertr(idx >= 0 && idx < (int)_shapes.size(), nullptr);
   return _shapes[idx];
 }
 
@@ -334,7 +343,7 @@ do_add_shape(BulletShape *bullet_shape, const TransformState *ts) {
   nassertv(ts);
 
   btCollisionShape *shape = bullet_shape->ptr();
-  nassertv(shape != NULL);
+  nassertv(shape != nullptr);
 
   nassertv(!(shape->getShapeType() == CONVEX_HULL_SHAPE_PROXYTYPE &&
             ((btConvexHullShape *)shape)->getNumVertices() == 0));
@@ -344,9 +353,17 @@ do_add_shape(BulletShape *bullet_shape, const TransformState *ts) {
 
   // Reset the shape scaling before we add a shape, and remember the current
   // Scale so we can restore it later...
-  NodePath np = NodePath::any_path((PandaNode *)this);
-  LVector3 scale = np.get_scale();
-  np.set_scale(1.0);
+  CPT(TransformState) prev_transform = get_transform();
+  bool scale_changed = false;
+  if (!prev_transform->is_identity() && prev_transform->get_scale() != LVecBase3(1.0, 1.0, 1.0)) {
+    // As a hack, temporarily release the lock, since transform_changed will
+    // otherwise deadlock trying to grab it again.  See GitHub issue #689.
+    LightMutex &lock = BulletWorld::get_global_lock();
+    lock.release();
+    set_transform(prev_transform->set_scale(LVecBase3(1.0, 1.0, 1.0)));
+    lock.acquire();
+    scale_changed = true;
+  }
 
   // Root shape
   btCollisionShape *previous = get_object()->getCollisionShape();
@@ -408,7 +425,13 @@ do_add_shape(BulletShape *bullet_shape, const TransformState *ts) {
   _shapes.push_back(bullet_shape);
 
   // Restore the local scaling again
-  np.set_scale(scale);
+  if (scale_changed) {
+    CPT(TransformState) transform = get_transform()->set_scale(prev_transform->get_scale());
+    LightMutex &lock = BulletWorld::get_global_lock();
+    lock.release();
+    set_transform(std::move(transform));
+    lock.acquire();
+  }
 
   do_shape_changed();
 }
@@ -427,7 +450,7 @@ remove_shape(BulletShape *shape) {
   found = find(_shapes.begin(), _shapes.end(), ptshape);
 
   if (found == _shapes.end()) {
-    bullet_cat.warning() << "shape not attached" << endl;
+    bullet_cat.warning() << "shape not attached" << std::endl;
   }
   else {
     _shapes.erase(found);
@@ -782,9 +805,9 @@ void BulletBodyNode::
 add_shapes_from_collision_solids(CollisionNode *cnode) {
   LightMutexHolder holder(BulletWorld::get_global_lock());
 
-  PT(BulletTriangleMesh) mesh = NULL;
+  PT(BulletTriangleMesh) mesh = nullptr;
 
-  for (int j=0; j<cnode->get_num_solids(); j++) {
+  for (size_t j = 0; j < cnode->get_num_solids(); ++j) {
     CPT(CollisionSolid) solid = cnode->get_solid(j);
     TypeHandle type = solid->get_type();
 
@@ -804,6 +827,14 @@ add_shapes_from_collision_solids(CollisionNode *cnode) {
       do_add_shape(BulletBoxShape::make_from_solid(box), ts);
     }
 
+    // CollisionCapsule
+    else if (CollisionCapsule::get_class_type() == type) {
+      CPT(CollisionCapsule) capsule = DCAST(CollisionCapsule, solid);
+      CPT(TransformState) ts = TransformState::make_pos((capsule->get_point_b() + capsule->get_point_a()) / 2.0);
+
+      do_add_shape(BulletCapsuleShape::make_from_solid(capsule), ts);
+    }
+
     // CollisionPlane
     else if (CollisionPlane::get_class_type() == type) {
       CPT(CollisionPlane) plane = DCAST(CollisionPlane, solid);
@@ -819,9 +850,9 @@ add_shapes_from_collision_solids(CollisionNode *cnode) {
          mesh = new BulletTriangleMesh();
       }
 
-      for (int i=2; i < polygon->get_num_points(); i++ ) {
+      for (size_t i = 2; i < polygon->get_num_points(); ++i) {
         LPoint3 p1 = polygon->get_point(0);
-        LPoint3 p2 = polygon->get_point(i-1);
+        LPoint3 p2 = polygon->get_point(i - 1);
         LPoint3 p3 = polygon->get_point(i);
 
         mesh->do_add_triangle(p1, p2, p3, true);
@@ -864,7 +895,7 @@ cout << "origin " << aabbMin.x() << " " << aabbMin.y() << " " << aabbMin.z() << 
 */
 
   btVector3 center;
-  btScalar radius;
+  btScalar radius = 0;
 
   if (_shape) {
     _shape->getBoundingSphere(center, radius);
@@ -914,7 +945,7 @@ write_datagram(BamWriter *manager, Datagram &dg) {
   }
 
   // Write NULL pointer to indicate the end of the list.
-  manager->write_pointer(dg, NULL);
+  manager->write_pointer(dg, nullptr);
 }
 
 /**
@@ -927,7 +958,7 @@ complete_pointers(TypedWritable **p_list, BamReader *manager) {
 
   PT(BulletShape) shape = DCAST(BulletShape, p_list[pi++]);
 
-  while (shape != (BulletShape *)NULL) {
+  while (shape != nullptr) {
     const TransformState *trans = DCAST(TransformState, p_list[pi++]);
     add_shape(shape, trans);
 

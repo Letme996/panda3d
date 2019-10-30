@@ -1,12 +1,40 @@
+import pytest, sys
+
 def test_nodepath_empty():
     """Tests NodePath behavior for empty NodePaths."""
+    from panda3d.core import NodePath, ParamNodePath
+    import pickle
+
+    empty = NodePath()
+    assert empty.is_empty()
+    assert not empty
+
+    # Try pickling, which uses __reduce__
+    dumped = pickle.dumps(empty)
+    empty2 = pickle.loads(dumped)
+    assert empty2.is_empty()
+    assert not empty2
+    assert empty == empty2
+
+    # Test write_datagram/fillin, which are invoked when the NodePath is being
+    # serialized indirectly, such as via ParamNodePath
+    dumped = pickle.dumps(ParamNodePath(empty))
+    empty2 = pickle.loads(dumped).get_value()
+    assert empty2.is_empty()
+    assert not empty2
+    assert empty == empty2
+
+def test_nodepath_single():
+    """Tests NodePath behavior for single-node NodePaths."""
     from panda3d.core import NodePath
 
-    empty = NodePath('np')
+    np = NodePath('np')
+    assert not np.is_empty()
+    assert np
 
-    assert empty.get_pos() == (0, 0, 0)
-    assert empty.get_hpr() == (0, 0, 0)
-    assert empty.get_scale() == (1, 1, 1)
+    assert np.get_pos() == (0, 0, 0)
+    assert np.get_hpr() == (0, 0, 0)
+    assert np.get_scale() == (1, 1, 1)
 
 def test_nodepath_parent():
     """Tests NodePath.reparentTo()."""
@@ -79,3 +107,64 @@ def test_nodepath_transform_composition():
     leg2 = node1.get_transform().compose(node3.get_transform())
     relative_transform = leg1.get_inverse().compose(leg2)
     assert np1.get_transform(np2) == relative_transform
+
+
+def test_weak_nodepath_comparison():
+    from panda3d.core import NodePath, WeakNodePath
+
+    path = NodePath("node")
+    weak = WeakNodePath(path)
+
+    assert path == weak
+    assert weak == path
+    assert weak <= path
+    assert path <= weak
+    assert weak >= path
+    assert path >= weak
+    assert not (path != weak)
+    assert not (weak != path)
+    assert not (weak > path)
+    assert not (path > weak)
+    assert not (weak < path)
+    assert not (path < weak)
+
+    assert hash(path) == hash(weak)
+    assert weak.get_node_path() == path
+    assert weak.node() == path.node()
+
+
+def test_nodepath_python_tags():
+    from panda3d.core import NodePath
+
+    path = NodePath("node")
+
+    with pytest.raises(KeyError):
+        path.python_tags["foo"]
+
+    path.python_tags["foo"] = "bar"
+
+    assert path.python_tags["foo"] == "bar"
+
+    # Make sure reference count stays the same
+    rc1 = sys.getrefcount(path.python_tags)
+    rc2 = sys.getrefcount(path.python_tags)
+    assert rc1 == rc2
+
+
+def test_nodepath_replace_texture():
+    from panda3d.core import NodePath, Texture
+
+    tex1 = Texture()
+    tex2 = Texture()
+
+    path1 = NodePath("node1")
+    path1.set_texture(tex1)
+    path1.replace_texture(tex1, tex2)
+    assert path1.get_texture() == tex2
+
+    path1 = NodePath("node1")
+    path2 = path1.attach_new_node("node2")
+    path2.set_texture(tex1)
+    path1.replace_texture(tex1, tex2)
+    assert not path1.has_texture()
+    assert path2.get_texture() == tex2

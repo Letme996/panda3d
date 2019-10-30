@@ -31,7 +31,7 @@ update(NxScene *scenePtr) {
   const NxDebugRenderable *renderable = scenePtr->getDebugRenderable();
   if (!renderable) {
     remove_all_geoms();
-    physx_cat.warning() << "Could no get debug renderable." << endl;
+    physx_cat.warning() << "Could no get debug renderable." << std::endl;
     return;
   }
 
@@ -100,7 +100,9 @@ update(NxScene *scenePtr) {
   _prim_lines->close_primitive();
   _prim_triangles->close_primitive();
 
-  physx_cat.spam() << "Updated PhysxDebugGeomNode geometry\n";
+  if (physx_cat.is_spam()) {
+    physx_cat.spam() << "Updated PhysxDebugGeomNode geometry\n";
+  }
 }
 
 /**

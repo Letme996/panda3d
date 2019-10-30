@@ -67,7 +67,7 @@ class Actor(DirectObject, NodePath):
 
         def __init__(self, filename = None, animBundle = None):
             self.filename = filename
-            self.animBundle = None
+            self.animBundle = animBundle
             self.animControl = None
 
         def makeCopy(self):
@@ -104,45 +104,43 @@ class Actor(DirectObject, NodePath):
                  lodNode = None, flattenable = True, setFinal = False,
                  mergeLODBundles = None, allowAsyncBind = None,
                  okMissing = None):
-        """__init__(self, string | string:string{}, string:string{} |
-        string:(string:string{}){}, Actor=None)
-        Actor constructor: can be used to create single or multipart
+        """Actor constructor: can be used to create single or multipart
         actors. If another Actor is supplied as an argument this
         method acts like a copy constructor. Single part actors are
         created by calling with a model and animation dictionary
-        (animName:animPath{}) as follows:
+        ``(animName:animPath{})`` as follows::
 
-           a = Actor("panda-3k.egg", {"walk":"panda-walk.egg" \
+           a = Actor("panda-3k.egg", {"walk":"panda-walk.egg",
                                       "run":"panda-run.egg"})
 
-        This could be displayed and animated as such:
+        This could be displayed and animated as such::
 
            a.reparentTo(render)
            a.loop("walk")
            a.stop()
 
         Multipart actors expect a dictionary of parts and a dictionary
-        of animation dictionaries (partName:(animName:animPath{}){}) as
-        below:
+        of animation dictionaries ``(partName:(animName:animPath{}){})``
+        as below::
 
             a = Actor(
 
                 # part dictionary
-                {"head":"char/dogMM/dogMM_Shorts-head-mod", \
-                 "torso":"char/dogMM/dogMM_Shorts-torso-mod", \
-                 "legs":"char/dogMM/dogMM_Shorts-legs-mod"}, \
+                {"head": "char/dogMM/dogMM_Shorts-head-mod",
+                 "torso": "char/dogMM/dogMM_Shorts-torso-mod",
+                 "legs": "char/dogMM/dogMM_Shorts-legs-mod"},
 
                 # dictionary of anim dictionaries
-                {"head":{"walk":"char/dogMM/dogMM_Shorts-head-walk", \
-                         "run":"char/dogMM/dogMM_Shorts-head-run"}, \
-                 "torso":{"walk":"char/dogMM/dogMM_Shorts-torso-walk", \
-                          "run":"char/dogMM/dogMM_Shorts-torso-run"}, \
-                 "legs":{"walk":"char/dogMM/dogMM_Shorts-legs-walk", \
-                         "run":"char/dogMM/dogMM_Shorts-legs-run"} \
+                {"head":{"walk": "char/dogMM/dogMM_Shorts-head-walk",
+                         "run": "char/dogMM/dogMM_Shorts-head-run"},
+                 "torso":{"walk": "char/dogMM/dogMM_Shorts-torso-walk",
+                          "run": "char/dogMM/dogMM_Shorts-torso-run"},
+                 "legs":{"walk": "char/dogMM/dogMM_Shorts-legs-walk",
+                         "run": "char/dogMM/dogMM_Shorts-legs-run"}
                  })
 
         In addition multipart actor parts need to be connected together
-        in a meaningful fashion:
+        in a meaningful fashion::
 
             a.attach("head", "torso", "joint-head")
             a.attach("torso", "legs", "joint-hips")
@@ -151,7 +149,7 @@ class Actor(DirectObject, NodePath):
         # ADD LOD COMMENT HERE!
         #
 
-        Other useful Actor class functions:
+        Other useful Actor class functions::
 
             #fix actor eye rendering
             a.drawInFront("joint-pupil?", "eyes*")
@@ -653,15 +651,11 @@ class Actor(DirectObject, NodePath):
         """
         # make sure we don't call this twice in a row
         # and pollute the the switches dictionary
-##         sortedKeys = list(self.switches.keys())
-##         sortedKeys.sort()
         child = self.__LODNode.find(str(lodName))
         index = self.__LODNode.node().findChild(child.node())
         self.__LODNode.node().forceSwitch(index)
 
     def printLOD(self):
-##         sortedKeys = list(self.switches.keys())
-##         sortedKeys.sort()
         sortedKeys = self.__sortedLODNames
         for eachLod in sortedKeys:
             print("python switches for %s: in: %d, out %d" % (eachLod,
@@ -679,12 +673,6 @@ class Actor(DirectObject, NodePath):
         """
         Restore all switch distance info (usually after a useLOD call)"""
         self.__LODNode.node().clearForceSwitch()
-##         sortedKeys = list(self.switches.keys())
-##         sortedKeys.sort()
-##         for eachLod in sortedKeys:
-##             index = sortedKeys.index(eachLod)
-##             self.__LODNode.node().setSwitch(index, self.switches[eachLod][0],
-##                                      self.switches[eachLod][1])
 
     def addLOD(self, lodName, inDist=0, outDist=0, center=None):
         """addLOD(self, string)
@@ -706,8 +694,6 @@ class Actor(DirectObject, NodePath):
         # save the switch distance info
         self.switches[lodName] = [inDist, outDist]
         # add the switch distance info
-##         sortedKeys = list(self.switches.keys())
-##         sortedKeys.sort()
         self.__LODNode.node().setSwitch(self.getLODIndex(lodName), inDist, outDist)
 
     def getLODIndex(self, lodName):
@@ -1147,7 +1133,7 @@ class Actor(DirectObject, NodePath):
     def getJoints(self, partName = None, jointName = '*', lodName = None):
         """ Returns the list of all joints, from the named part or
         from all parts, that match the indicated jointName.  The
-        jointName may include pattern characters like *. """
+        jointName may include pattern characters like \\*. """
 
         joints=[]
         pattern = GlobPattern(jointName)
@@ -1959,6 +1945,7 @@ class Actor(DirectObject, NodePath):
                     animName = acc.getAnimName(i)
 
                     animDef = Actor.AnimDef()
+                    animDef.animBundle = animControl.getAnim()
                     animDef.animControl = animControl
                     self.__animControlDict[lodName][partName][animName] = animDef
 
@@ -2450,15 +2437,15 @@ class Actor(DirectObject, NodePath):
         return ActorInterval.ActorInterval(self, *args, **kw)
 
     def getAnimBlends(self, animName=None, partName=None, lodName=None):
-        """ Returns a list of the form:
+        """Returns a list of the form::
 
-        [ (lodName, [(animName, [(partName, effect), (partName, effect), ...]),
-                     (animName, [(partName, effect), (partName, effect), ...]),
-                     ...]),
-          (lodName, [(animName, [(partName, effect), (partName, effect), ...]),
-                     (animName, [(partName, effect), (partName, effect), ...]),
-                     ...]),
-           ... ]
+           [ (lodName, [(animName, [(partName, effect), (partName, effect), ...]),
+                        (animName, [(partName, effect), (partName, effect), ...]),
+                        ...]),
+             (lodName, [(animName, [(partName, effect), (partName, effect), ...]),
+                        (animName, [(partName, effect), (partName, effect), ...]),
+                        ...]),
+              ... ]
 
         This list reports the non-zero control effects for each
         partName within a particular animation and LOD. """
@@ -2519,7 +2506,7 @@ class Actor(DirectObject, NodePath):
         else:
             animNames = [animName]
         for animName in animNames:
-            if animName is 'nothing':
+            if animName == 'nothing':
                 continue
             thisAnim = ''
             totalEffect = 0.

@@ -21,14 +21,20 @@
  */
 PyObject *Extension<StreamReader>::
 extract_bytes(size_t size) {
-  unsigned char *buffer = (unsigned char *)alloca(size);
-  size_t read_bytes = _this->extract_bytes(buffer, size);
+  std::istream *in = _this->get_istream();
+  if (in->eof() || in->fail() || size == 0) {
+    return PyBytes_FromStringAndSize(nullptr, 0);
+  }
 
-#if PY_MAJOR_VERSION >= 3
-  return PyBytes_FromStringAndSize((char *)buffer, read_bytes);
-#else
-  return PyString_FromStringAndSize((char *)buffer, read_bytes);
-#endif
+  PyObject *bytes = PyBytes_FromStringAndSize(nullptr, size);
+  in->read(PyBytes_AS_STRING(bytes), size);
+  size_t read_bytes = in->gcount();
+
+  if (read_bytes == size || _PyBytes_Resize(&bytes, read_bytes) == 0) {
+    return bytes;
+  } else {
+    return nullptr;
+  }
 }
 
 /**
@@ -41,13 +47,13 @@ extract_bytes(size_t size) {
  */
 PyObject *Extension<StreamReader>::
 readline() {
-  istream *in = _this->get_istream();
+  std::istream *in = _this->get_istream();
 
-  string line;
+  std::string line;
   int ch = in->get();
-  while (!in->eof() && !in->fail()) {
+  while (ch != EOF && !in->fail()) {
     line += ch;
-    if (ch == '\n') {
+    if (ch == '\n' || in->eof()) {
       // Here's the newline character.
       break;
     }
@@ -68,8 +74,8 @@ readline() {
 PyObject *Extension<StreamReader>::
 readlines() {
   PyObject *lst = PyList_New(0);
-  if (lst == NULL) {
-    return NULL;
+  if (lst == nullptr) {
+    return nullptr;
   }
 
   PyObject *py_line = readline();

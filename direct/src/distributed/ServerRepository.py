@@ -137,7 +137,7 @@ class ServerRepository:
 
         # An allocator object that assigns the next doIdBase to each
         # client.
-        self.idAllocator = UniqueIdAllocator(0, 0xffffffff / self.doIdRange)
+        self.idAllocator = UniqueIdAllocator(0, 0xffffffff // self.doIdRange)
 
         self.dcFile = DCFile()
         self.dcSuffix = ''
@@ -280,7 +280,7 @@ class ServerRepository:
                         self.notify.error("Module %s does not define class %s." % (className, className))
                     classDef = getattr(classDef, className)
 
-                if inspect.isclass(classDef):
+                if not inspect.isclass(classDef):
                     self.notify.error("Symbol %s is not a class name." % (className))
                 else:
                     dclass.setClassDef(classDef)

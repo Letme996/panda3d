@@ -14,7 +14,6 @@
 #include "asyncFuture.h"
 #include "asyncTask.h"
 #include "asyncTaskManager.h"
-#include "conditionVarFull.h"
 #include "config_event.h"
 #include "pStatTimer.h"
 #include "throw_event.h"
@@ -30,6 +29,20 @@ AsyncFuture::
   // If this triggers, the future destroyed before it was cancelled, which is
   // not valid.  Unless we should simply call cancel() here?
   nassertv(_waiting.empty());
+
+  // This is an attempt to work around what appears to be a compiler bug in
+  // MSVC when compiling with optimizations and having an EventStoreInt stored
+  // in this field.  It crashes when we delete via the ReferenceCount base
+  // instead of via the TypedObject.  I haven't been able to find out why;
+  // just that it doesn't happen with ParamString. ~rdb
+  ReferenceCount *result_ref = _result_ref.p();
+  if (result_ref != nullptr) {
+    _result_ref.cheat() = nullptr;
+    if (!result_ref->unref()) {
+      delete _result;
+    }
+    _result = nullptr;
+  }
 }
 
 /**
@@ -55,7 +68,7 @@ cancel() {
  *
  */
 void AsyncFuture::
-output(ostream &out) const {
+output(std::ostream &out) const {
   out << get_type();
   FutureState state = (FutureState)AtomicAdjust::get(_future_state);
   switch (state) {
@@ -159,7 +172,7 @@ notify_done(bool clean_exit) {
   if (clean_exit && !_done_event.empty()) {
     PT_Event event = new Event(_done_event);
     event->add_parameter(EventParameter(this));
-    throw_event(move(event));
+    throw_event(std::move(event));
   }
 }
 
@@ -244,7 +257,6 @@ add_waiting_task(AsyncTask *task) {
  */
 void AsyncFuture::
 wake_task(AsyncTask *task) {
-  cerr << "waking task\n";
   AsyncTaskManager *manager = task->_manager;
   if (manager == nullptr) {
     // If it's an unscheduled task, schedule it on the same manager as the
@@ -274,9 +286,9 @@ wake_task(AsyncTask *task) {
     }
 
     {
-      manager->_lock.release();
+      manager->_lock.unlock();
       task->upon_birth(manager);
-      manager->_lock.acquire();
+      manager->_lock.lock();
       nassertv(task->_manager == nullptr &&
                task->_state == AsyncTask::S_inactive);
 
@@ -299,7 +311,7 @@ wake_task(AsyncTask *task) {
     return;
 
   default:
-    nassertv(false);
+    nassert_raise("unexpected task state");
     return;
   }
 }
@@ -309,7 +321,7 @@ wake_task(AsyncTask *task) {
  */
 AsyncGatheringFuture::
 AsyncGatheringFuture(AsyncFuture::Futures futures) :
-  _futures(move(futures)),
+  _futures(std::move(futures)),
   _num_pending(0) {
 
   bool any_pending = false;

@@ -12,8 +12,8 @@
  * Prior system by: cary
  */
 
-#ifndef __AUDIOSOUND_H__
-#define __AUDIOSOUND_H__
+#ifndef AUDIOSOUND_H
+#define AUDIOSOUND_H
 
 #include "config_audio.h"
 #include "typedReferenceCount.h"
@@ -74,11 +74,11 @@ PUBLISHED:
 
   // Set (or clear) the event that will be thrown when the sound finishes
   // playing.  To clear the event, pass an empty string.
-  virtual void set_finished_event(const string& event) = 0;
-  virtual const string& get_finished_event() const = 0;
+  virtual void set_finished_event(const std::string& event) = 0;
+  virtual const std::string& get_finished_event() const = 0;
 
   // There is no set_name(), this is intentional.
-  virtual const string& get_name() const = 0;
+  virtual const std::string& get_name() const = 0;
 
   // return: playing time in seconds.
   virtual PN_stdfloat length() const = 0;
@@ -104,16 +104,9 @@ PUBLISHED:
   virtual void set_3d_max_distance(PN_stdfloat dist);
   virtual PN_stdfloat get_3d_max_distance() const;
 
-  // *_speaker_mix and *_speaker_level(s) serve the same purpose.
-  // *_speaker_mix is for use with FMOD. *_speaker_level(s) is for use with
-  // Miles.  Both interfaces exist because of a significant difference in the
-  // two APIs.  Hopefully the difference can be reconciled into a single
-  // interface at some point.
+  // *_speaker_mix is for use with FMOD.
   virtual PN_stdfloat get_speaker_mix(int speaker);
   virtual void set_speaker_mix(PN_stdfloat frontleft, PN_stdfloat frontright, PN_stdfloat center, PN_stdfloat sub, PN_stdfloat backleft, PN_stdfloat backright, PN_stdfloat sideleft, PN_stdfloat  sideright);
-
-  virtual PN_stdfloat get_speaker_level(int index);
-  virtual void set_speaker_levels(PN_stdfloat level1, PN_stdfloat level2=-1.0f, PN_stdfloat level3=-1.0f, PN_stdfloat level4=-1.0f, PN_stdfloat level5=-1.0f, PN_stdfloat level6=-1.0f, PN_stdfloat level7=-1.0f, PN_stdfloat level8=-1.0f, PN_stdfloat level9=-1.0f);
 
   virtual int get_priority();
   virtual void set_priority(int priority);
@@ -123,8 +116,8 @@ PUBLISHED:
   enum SoundStatus { BAD, READY, PLAYING };
   virtual SoundStatus status() const = 0;
 
-  virtual void output(ostream &out) const;
-  virtual void write(ostream &out) const;
+  virtual void output(std::ostream &out) const;
+  virtual void write(std::ostream &out) const;
 
 protected:
   AudioSound();
@@ -149,15 +142,15 @@ private:
   static TypeHandle _type_handle;
 };
 
-inline ostream &
-operator << (ostream &out, const AudioSound &sound) {
+inline std::ostream &
+operator << (std::ostream &out, const AudioSound &sound) {
   sound.output(out);
   return out;
 }
 
 #include "audioSound.I"
 
-EXPCL_PANDA_AUDIO ostream &
-operator << (ostream &out, AudioSound::SoundStatus status);
+EXPCL_PANDA_AUDIO std::ostream &
+operator << (std::ostream &out, AudioSound::SoundStatus status);
 
-#endif /* __AUDIOSOUND_H__ */
+#endif /* AUDIOSOUND_H */

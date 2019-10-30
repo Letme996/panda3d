@@ -1,3 +1,9 @@
+"""The Python specialization of the particle system.
+
+See the :ref:`particle-effects` section in the manual for an explanation
+of the particle system.
+"""
+
 from panda3d.core import *
 
 from panda3d.physics import PhysicalNode
@@ -22,11 +28,13 @@ from panda3d.physics import RingEmitter
 from panda3d.physics import SphereSurfaceEmitter
 from panda3d.physics import SphereVolumeEmitter
 from panda3d.physics import TangentRingEmitter
+from panda3d.physics import SpriteAnim
 
 from . import SpriteParticleRendererExt
 
 from direct.directnotify.DirectNotifyGlobal import directNotify
 import sys
+
 
 class Particles(ParticleSystem):
     notify = directNotify.newCategory('Particles')
@@ -573,7 +581,6 @@ class Particles(ParticleSystem):
         print('BirthRate Ranges: %s' % birthRateRange)
 
         return dict(zip(('min','median','max'),[l*s/b for l,s,b in zip(litterRange,lifespanRange,birthRateRange)]))
-
 
     def accelerate(self,time,stepCount = 1,stepTime=0.0):
         if time > 0.0:

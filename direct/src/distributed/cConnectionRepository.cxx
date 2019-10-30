@@ -26,7 +26,11 @@
 
 #ifdef HAVE_PYTHON
 #include "py_panda.h"
+#include "dcClass_ext.h"
 #endif
+
+using std::endl;
+using std::string;
 
 const string CConnectionRepository::_overflow_event_name = "CRDatagramOverflow";
 
@@ -41,10 +45,10 @@ CConnectionRepository::
 CConnectionRepository(bool has_owner_view, bool threaded_net) :
   _lock("CConnectionRepository::_lock"),
 #ifdef HAVE_PYTHON
-  _python_repository(NULL),
+  _python_repository(nullptr),
 #endif
 #ifdef HAVE_OPENSSL
-  _http_conn(NULL),
+  _http_conn(nullptr),
 #endif
 #ifdef HAVE_NET
   _cw(&_qcm, threaded_net ? 1 : 0),
@@ -95,7 +99,7 @@ set_tcp_header_size(int tcp_header_size) {
   _tcp_header_size = tcp_header_size;
 
 #ifdef HAVE_OPENSSL
-  if (_http_conn != (SocketStream *)NULL) {
+  if (_http_conn != nullptr) {
     _http_conn->set_tcp_header_size(tcp_header_size);
   }
 #endif
@@ -157,7 +161,7 @@ try_connect_net(const URLSpec &url) {
     _qcm.open_TCP_client_connection(url.get_server(), url.get_port(),
                                     game_server_timeout_ms);
 
-  if (_net_conn != (Connection *)NULL) {
+  if (_net_conn != nullptr) {
     _net_conn->set_no_delay(true);
     _qcr.add_connection(_net_conn);
     return true;
@@ -209,7 +213,7 @@ start_delay(double min_delay, double max_delay) {
     _qcr.start_delay(min_delay, max_delay);
 #endif  // HAVE_NET
 #ifdef HAVE_OPENSSL
-    if (_http_conn != (SocketStream *)NULL) {
+    if (_http_conn != nullptr) {
       _http_conn->start_delay(min_delay, max_delay);
     }
 #endif  // HAVE_OPENSSL
@@ -233,7 +237,7 @@ stop_delay() {
   _qcr.stop_delay();
 #endif  // HAVE_NET
 #ifdef HAVE_OPENSSL
-  if (_http_conn != (SocketStream *)NULL) {
+  if (_http_conn != nullptr) {
     _http_conn->stop_delay();
   }
 #endif  // HAVE_OPENSSL
@@ -278,7 +282,7 @@ check_datagram() {
 #ifdef HAVE_PYTHON
       // For now, we need to stuff this field onto the Python structure, to
       // support legacy code that expects to find it there.
-      if (_python_repository != (PyObject *)NULL) {
+      if (_python_repository != nullptr) {
 #if defined(HAVE_THREADS) && !defined(SIMPLE_THREADS)
         PyGILState_STATE gstate;
         gstate = PyGILState_Ensure();
@@ -353,7 +357,7 @@ is_connected() {
         _qcm.close_connection(reset_connection);
         if (reset_connection == _net_conn) {
           // Whoops, lost our connection.
-          _net_conn = NULL;
+          _net_conn = nullptr;
           return false;
         }
       }
@@ -370,7 +374,7 @@ is_connected() {
 
     // Connection lost.
     delete _http_conn;
-    _http_conn = NULL;
+    _http_conn = nullptr;
   }
 #endif  // HAVE_OPENSSL
 
@@ -406,7 +410,7 @@ send_datagram(const Datagram &dg) {
     bool result = _bdc.SendMessage(dg);
     if (!result && _bdc.IsConnected()) {
 #ifdef HAVE_PYTHON
-      ostringstream s;
+      std::ostringstream s;
 
 #if PY_VERSION_HEX >= 0x03030000
       PyObject *exc_type = PyExc_ConnectionError;
@@ -607,7 +611,7 @@ disconnect() {
   #ifdef HAVE_NET
   if (_net_conn) {
     _qcm.close_connection(_net_conn);
-    _net_conn = NULL;
+    _net_conn = nullptr;
   }
   #endif  // HAVE_NET
 
@@ -615,7 +619,7 @@ disconnect() {
   if (_http_conn) {
     _http_conn->close();
     delete _http_conn;
-    _http_conn = NULL;
+    _http_conn = nullptr;
   }
   #endif  // HAVE_OPENSSL
 
@@ -684,11 +688,11 @@ handle_update_field() {
 
   PStatTimer timer(_update_pcollector);
   unsigned int do_id = _di.get_uint32();
-  if (_python_repository != (PyObject *)NULL)
+  if (_python_repository != nullptr)
   {
     PyObject *doId2do =
       PyObject_GetAttrString(_python_repository, "doId2do");
-    nassertr(doId2do != NULL, false);
+    nassertr(doId2do != nullptr, false);
 
     #ifdef USE_PYTHON_2_2_OR_EARLIER
     PyObject *doId = PyInt_FromLong(do_id);
@@ -699,14 +703,14 @@ handle_update_field() {
     Py_DECREF(doId);
     Py_DECREF(doId2do);
 
-    if (distobj != NULL) {
+    if (distobj != nullptr) {
       PyObject *dclass_obj = PyObject_GetAttrString(distobj, "dclass");
-      nassertr(dclass_obj != NULL, false);
+      nassertr(dclass_obj != nullptr, false);
 
 
       PyObject *dclass_this = PyObject_GetAttrString(dclass_obj, "this");
       Py_DECREF(dclass_obj);
-      nassertr(dclass_this != NULL, false);
+      nassertr(dclass_this != nullptr, false);
 
       DCClass *dclass = (DCClass *)PyLong_AsVoidPtr(dclass_this);
       Py_DECREF(dclass_this);
@@ -715,7 +719,7 @@ handle_update_field() {
       // 'neverDisable' attribute set to non-zero
       if (_in_quiet_zone) {
         PyObject *neverDisable = PyObject_GetAttrString(distobj, "neverDisable");
-        nassertr(neverDisable != NULL, false);
+        nassertr(neverDisable != nullptr, false);
 
         unsigned int cNeverDisable = PyLong_AsLong(neverDisable);
         if (!cNeverDisable) {
@@ -733,7 +737,7 @@ handle_update_field() {
       // get into trouble if it tried to delete the object from the doId2do
       // map.
       Py_INCREF(distobj);
-      dclass->receive_update(distobj, _di);
+      invoke_extension(dclass).receive_update(distobj, _di);
       Py_DECREF(distobj);
 
       if (PyErr_Occurred()) {
@@ -772,14 +776,14 @@ handle_update_field_owner() {
 
   PStatTimer timer(_update_pcollector);
   unsigned int do_id = _di.get_uint32();
-  if (_python_repository != (PyObject *)NULL) {
+  if (_python_repository != nullptr) {
     PyObject *doId2do =
       PyObject_GetAttrString(_python_repository, "doId2do");
-    nassertr(doId2do != NULL, false);
+    nassertr(doId2do != nullptr, false);
 
     PyObject *doId2ownerView =
       PyObject_GetAttrString(_python_repository, "doId2ownerView");
-    nassertr(doId2ownerView != NULL, false);
+    nassertr(doId2ownerView != nullptr, false);
 
     #ifdef USE_PYTHON_2_2_OR_EARLIER
     PyObject *doId = PyInt_FromLong(do_id);
@@ -791,20 +795,21 @@ handle_update_field_owner() {
     PyObject *distobjOV = PyDict_GetItem(doId2ownerView, doId);
     Py_DECREF(doId2ownerView);
 
-    if (distobjOV != NULL) {
+    if (distobjOV != nullptr) {
       PyObject *dclass_obj = PyObject_GetAttrString(distobjOV, "dclass");
-      nassertr(dclass_obj != NULL, false);
+      nassertr(dclass_obj != nullptr, false);
 
       PyObject *dclass_this = PyObject_GetAttrString(dclass_obj, "this");
       Py_DECREF(dclass_obj);
-      nassertr(dclass_this != NULL, false);
+      nassertr(dclass_this != nullptr, false);
 
       DCClass *dclass = (DCClass *)PyLong_AsVoidPtr(dclass_this);
       Py_DECREF(dclass_this);
 
       // check if we should forward this update to the owner view
+      vector_uchar data = _di.get_remaining_bytes();
       DCPacker packer;
-      packer.set_unpack_data(_di.get_remaining_bytes());
+      packer.set_unpack_data((const char *)data.data(), data.size(), false);
       int field_id = packer.raw_unpack_uint16();
       DCField *field = dclass->get_field_by_index(field_id);
       if (field->is_ownrecv()) {
@@ -816,7 +821,7 @@ handle_update_field_owner() {
         // make a copy of the datagram iterator so that we can use the main
         // iterator for the non-owner update
         DatagramIterator _odi(_di);
-        dclass->receive_update(distobjOV, _odi);
+        invoke_extension(dclass).receive_update(distobjOV, _odi);
         Py_DECREF(distobjOV);
 
         if (PyErr_Occurred()) {
@@ -833,29 +838,31 @@ handle_update_field_owner() {
     Py_DECREF(doId);
     Py_DECREF(doId2do);
 
-    if (distobj != NULL) {
+    if (distobj != nullptr) {
       PyObject *dclass_obj = PyObject_GetAttrString(distobj, "dclass");
-      nassertr(dclass_obj != NULL, false);
+      nassertr(dclass_obj != nullptr, false);
 
       PyObject *dclass_this = PyObject_GetAttrString(dclass_obj, "this");
       Py_DECREF(dclass_obj);
-      nassertr(dclass_this != NULL, false);
+      nassertr(dclass_this != nullptr, false);
 
       DCClass *dclass = (DCClass *)PyLong_AsVoidPtr(dclass_this);
       Py_DECREF(dclass_this);
 
       // check if we should forward this update to the owner view
+      vector_uchar data = _di.get_remaining_bytes();
       DCPacker packer;
-      packer.set_unpack_data(_di.get_remaining_bytes());
-      int field_id = packer.raw_unpack_uint16();
-      DCField *field = dclass->get_field_by_index(field_id);
+      packer.set_unpack_data((const char *)data.data(), data.size(), false);
+
+      //int field_id = packer.raw_unpack_uint16();
+      //DCField *field = dclass->get_field_by_index(field_id);
       if (true) {//field->is_broadcast()) {
         // It's a good idea to ensure the reference count to distobj is raised
         // while we call the update method--otherwise, the update method might
         // get into trouble if it tried to delete the object from the doId2do
         // map.
         Py_INCREF(distobj);
-        dclass->receive_update(distobj, _di);
+        invoke_extension(dclass).receive_update(distobj, _di);
         Py_DECREF(distobj);
 
         if (PyErr_Occurred()) {
@@ -881,11 +888,11 @@ handle_update_field_owner() {
  * description on the indicated output stream.
  */
 void CConnectionRepository::
-describe_message(ostream &out, const string &prefix,
+describe_message(std::ostream &out, const string &prefix,
                  const Datagram &dg) const {
   DCPacker packer;
 
-  packer.set_unpack_data(dg.get_message());
+  packer.set_unpack_data((const char *)dg.get_data(), dg.get_length(), false);
   CHANNEL_TYPE do_id;
   int msg_type;
   bool is_update = false;
@@ -912,19 +919,19 @@ describe_message(ostream &out, const string &prefix,
     string msgName;
 
     #ifdef HAVE_PYTHON
-    if (_python_repository != (PyObject *)NULL) {
+    if (_python_repository != nullptr) {
       PyObject *msgId = PyLong_FromLong(msg_type);
-      nassertv(msgId != NULL);
+      nassertv(msgId != nullptr);
 #if PY_MAJOR_VERSION >= 3
       PyObject *methodName = PyUnicode_FromString("_getMsgName");
 #else
       PyObject *methodName = PyString_FromString("_getMsgName");
 #endif
-      nassertv(methodName != NULL);
+      nassertv(methodName != nullptr);
 
       PyObject *result = PyObject_CallMethodObjArgs(_python_repository, methodName,
-                                                    msgId, NULL);
-      nassertv(result != NULL);
+                                                    msgId, nullptr);
+      nassertv(result != nullptr);
 
 #if PY_MAJOR_VERSION >= 3
       msgName += string(PyUnicode_AsUTF8(result));
@@ -949,13 +956,13 @@ describe_message(ostream &out, const string &prefix,
     // It's an update message.  Figure out what dclass the object is based on
     // its doId, so we can decode the rest of the message.
     do_id = packer.raw_unpack_uint32();
-    DCClass *dclass = NULL;
+    DCClass *dclass = nullptr;
 
     #ifdef HAVE_PYTHON
-    if (_python_repository != (PyObject *)NULL) {
+    if (_python_repository != nullptr) {
       PyObject *doId2do =
         PyObject_GetAttrString(_python_repository, "doId2do");
-      nassertv(doId2do != NULL);
+      nassertv(doId2do != nullptr);
 
       #ifdef USE_PYTHON_2_2_OR_EARLIER
       PyObject *doId = PyInt_FromLong(do_id);
@@ -966,13 +973,13 @@ describe_message(ostream &out, const string &prefix,
       Py_DECREF(doId);
       Py_DECREF(doId2do);
 
-      if (distobj != NULL) {
+      if (distobj != nullptr) {
         PyObject *dclass_obj = PyObject_GetAttrString(distobj, "dclass");
-        nassertv(dclass_obj != NULL);
+        nassertv(dclass_obj != nullptr);
 
         PyObject *dclass_this = PyObject_GetAttrString(dclass_obj, "this");
         Py_DECREF(dclass_obj);
-        nassertv(dclass_this != NULL);
+        nassertv(dclass_this != nullptr);
 
         dclass = (DCClass *)PyLong_AsVoidPtr(dclass_this);
         Py_DECREF(dclass_this);
@@ -982,7 +989,7 @@ describe_message(ostream &out, const string &prefix,
 
     int field_id = packer.raw_unpack_uint16();
 
-    if (dclass == (DCClass *)NULL) {
+    if (dclass == nullptr) {
       out << full_prefix << "update for unknown object " << do_id
           << ", field " << field_id << "\n";
 
@@ -990,7 +997,7 @@ describe_message(ostream &out, const string &prefix,
       out << full_prefix <<
         ":" << dclass->get_name() << "(" << do_id << ").";
       DCField *field = dclass->get_field_by_index(field_id);
-      if (field == (DCField *)NULL) {
+      if (field == nullptr) {
         out << "unknown field " << field_id << "\n";
 
       } else {

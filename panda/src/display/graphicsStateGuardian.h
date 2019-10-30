@@ -228,7 +228,7 @@ PUBLISHED:
   MAKE_PROPERTY(shader_model, get_shader_model, set_shader_model);
 
   virtual int get_supported_geom_rendering() const;
-  virtual bool get_supports_cg_profile(const string &name) const;
+  virtual bool get_supports_cg_profile(const std::string &name) const;
 
   INLINE bool get_color_scale_via_lighting() const;
   INLINE bool get_alpha_scale_via_texture() const;
@@ -259,7 +259,7 @@ PUBLISHED:
   typedef bool TextureCallback(TextureContext *tc, void *callback_arg);
   void traverse_prepared_textures(TextureCallback *func, void *callback_arg);
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) || !defined(CPPPARSER)
   void set_flash_texture(Texture *tex);
   void clear_flash_texture();
   Texture *get_flash_texture() const;
@@ -267,11 +267,11 @@ PUBLISHED:
 #endif
 
 PUBLISHED:
-  virtual bool has_extension(const string &extension) const;
+  virtual bool has_extension(const std::string &extension) const;
 
-  virtual string get_driver_vendor();
-  virtual string get_driver_renderer();
-  virtual string get_driver_version();
+  virtual std::string get_driver_vendor();
+  virtual std::string get_driver_renderer();
+  virtual std::string get_driver_version();
   virtual int get_driver_version_major();
   virtual int get_driver_version_minor();
   virtual int get_driver_shader_version_major();
@@ -286,13 +286,14 @@ PUBLISHED:
   MAKE_PROPERTY(driver_shader_version_minor, get_driver_shader_version_minor);
 
   bool set_scene(SceneSetup *scene_setup);
-  virtual SceneSetup *get_scene() const FINAL;
+  virtual SceneSetup *get_scene() const final;
   MAKE_PROPERTY(scene, get_scene, set_scene);
 
 public:
-  virtual TextureContext *prepare_texture(Texture *tex);
+  virtual TextureContext *prepare_texture(Texture *tex, int view);
   virtual bool update_texture(TextureContext *tc, bool force);
   virtual void release_texture(TextureContext *tc);
+  virtual void release_textures(const pvector<TextureContext *> &contexts);
   virtual bool extract_texture_data(Texture *tex);
 
   virtual SamplerContext *prepare_sampler(const SamplerState &sampler);
@@ -306,12 +307,15 @@ public:
 
   virtual VertexBufferContext *prepare_vertex_buffer(GeomVertexArrayData *data);
   virtual void release_vertex_buffer(VertexBufferContext *vbc);
+  virtual void release_vertex_buffers(const pvector<BufferContext *> &contexts);
 
   virtual IndexBufferContext *prepare_index_buffer(GeomPrimitive *data);
   virtual void release_index_buffer(IndexBufferContext *ibc);
+  virtual void release_index_buffers(const pvector<BufferContext *> &contexts);
 
   virtual BufferContext *prepare_shader_buffer(ShaderBuffer *data);
   virtual void release_shader_buffer(BufferContext *ibc);
+  virtual void release_shader_buffers(const pvector<BufferContext *> &contexts);
 
   virtual void begin_occlusion_query();
   virtual PT(OcclusionQueryContext) end_occlusion_query();
@@ -339,6 +343,7 @@ public:
   PT(Texture) fetch_specified_texture(Shader::ShaderTexSpec &spec,
                                       SamplerState &sampler, int &view);
   const Shader::ShaderPtrData *fetch_ptr_parameter(const Shader::ShaderPtrSpec& spec);
+  bool fetch_ptr_parameter(const Shader::ShaderPtrSpec &spec, Shader::ShaderPtrData &data);
 
   virtual void prepare_display_region(DisplayRegionPipelineReader *dr);
   virtual void clear_before_callback();
@@ -430,7 +435,7 @@ public:
 
   static void create_gamma_table (PN_stdfloat gamma, unsigned short *red_table, unsigned short *green_table, unsigned short *blue_table);
 
-  PT(Texture) get_shadow_map(const NodePath &light_np, GraphicsOutputBase *host=NULL);
+  PT(Texture) get_shadow_map(const NodePath &light_np, GraphicsOutputBase *host=nullptr);
   PT(Texture) get_dummy_shadow_map(Texture::TextureType texture_type) const;
   virtual GraphicsOutput *make_shadow_buffer(LightLensNode *light, Texture *tex, GraphicsOutput *host);
 
@@ -651,6 +656,8 @@ protected:
 
 #ifndef NDEBUG
   PT(Texture) _flash_texture;
+#else
+  PT(Texture) _flash_texture_unused;
 #endif
 
 public:
@@ -685,7 +692,6 @@ public:
   static PStatCollector _texture_state_pcollector;
   static PStatCollector _draw_primitive_pcollector;
   static PStatCollector _draw_set_state_pcollector;
-  static PStatCollector _clear_pcollector;
   static PStatCollector _flush_pcollector;
   static PStatCollector _compute_dispatch_pcollector;
   static PStatCollector _wait_occlusion_pcollector;
@@ -760,7 +766,7 @@ private:
   friend class GraphicsEngine;
 };
 
-EXPCL_PANDA_DISPLAY ostream &operator << (ostream &out, GraphicsStateGuardian::ShaderModel sm);
+EXPCL_PANDA_DISPLAY std::ostream &operator << (std::ostream &out, GraphicsStateGuardian::ShaderModel sm);
 
 #include "graphicsStateGuardian.I"
 
